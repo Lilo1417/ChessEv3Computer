@@ -1,9 +1,29 @@
 import pygame as p
 import ChessEngine, ChessAI
+# initialize Server
+import socket
+import signal
+import sys
+
+
+# try:
+#     while True:
+#         message = input("Enter message (or 'quit' to disconnect): ")
+#         if message.lower() == 'quit':
+#             conn.send(b'quit')
+#             break
+#         conn.send(message.encode())
+# except (ConnectionResetError, BrokenPipeError):
+#     print("Client (EV3) disconnected—waiting for reconnect...")
+# except KeyboardInterrupt:
+#     raise
+# finally:
+#     conn.close()
+#     print("Connection closed—ready for next...")
 
 # Player settings. Turn player_one to True to play as white and/or player_two to True to play black.
 player_one = True  # If the AI is playing white, then False
-player_two = False  # Same as above but for black
+player_two = True # Same as above but for black
 
 p.init()  # Initialize pygame
 
@@ -27,13 +47,13 @@ def load_images():
         images[piece] = p.transform.smoothscale(p.image.load(f'images/{piece}.png'), (sq_size, sq_size))
 
 
-def main():
+def main(conn):
     """Main function which handles user input and updates graphics"""
     screen = p.display.set_mode((board_width + move_log_panel_width, board_height))
     clock = p.time.Clock()
     screen.fill(p.Color('white'))
     move_log_font = p.font.SysFont('Arial', 14, False, False)
-    game_state = ChessEngine.GameState()
+    game_state = ChessEngine.GameState(conn)
     valid_moves = game_state.get_valid_moves()
     move_made = False  # Flag variable for when a move is made
     animate = False  # Flag variable for when a move should be animated
@@ -63,7 +83,7 @@ def main():
                         square_selected = (row, column)
                         player_clicks.append(square_selected)  # Appends both 1st and 2nd clicks
                     if len(player_clicks) == 2:
-                        move = ChessEngine.Move(player_clicks[0], player_clicks[1], game_state.board)
+                        move = ChessEngine.Move(player_clicks[0], player_clicks[1], game_state.board, conn)
                         for i in range(len(valid_moves)):
                             if move == valid_moves[i]:
                                 game_state.make_move(valid_moves[i])
@@ -82,7 +102,7 @@ def main():
                     animate = False
                     game_over = False
                 if event.key == p.K_r:  # Reset board when 'r is pressed
-                    game_state = ChessEngine.GameState()
+                    game_state = ChessEngine.GameState(conn)
                     valid_moves = game_state.get_valid_moves()
                     square_selected = ()
                     player_clicks = []
@@ -243,4 +263,19 @@ def draw_endgame_text(screen, text):
 
 
 if __name__ == '__main__':
-    main()
+    def signal_handler(sig, frame):
+        print('\nShutting down...')
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(('::', 12345))
+    server.listen(1)
+    print("Server listening on port 12345 (handles restarts)...")
+
+    conn, addr = server.accept()
+    print(f"Connected by {addr} (EV3)")
+
+    main(conn)

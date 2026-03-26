@@ -8,7 +8,7 @@ class GameState:
     determining valid moves given the current state, and keeping a move log.
     """
 
-    def __init__(self):
+    def __init__(self, conn):
         """
         The board is a 8x8 2d list. Each element has 2 characters.
         1st character represents the colour of the piece (b/w).
@@ -35,6 +35,7 @@ class GameState:
         self.in_check = False
         self.pins = []
         self.checks = []
+        self.conn = conn
 
         # En passant
         self.en_passant_possible = ()  # Coordinates for square where en passant possible
@@ -51,10 +52,13 @@ class GameState:
     def make_move(self, move):
         """Takes a move as a parameter, executes it, and updates move log"""
         global promoted_piece
-
+        
         self.board[move.start_row][move.start_column] = '--'  # When a piece is moved, the square it leaves is blank
         self.board[move.end_row][move.end_column] = move.piece_moved  # Moves piece to new location
         self.move_log.append(move)  # Logs move
+
+        message = "SRow " + str(move.start_row) + " SCol " + str(move.start_column) + " ERow " + str(move.end_row) + " ECol " + str(move.end_column)
+        self.conn.send(message.encode())
 
         if move.piece_moved == 'wK':
             self.white_king_location = (move.end_row, move.end_column)
@@ -231,16 +235,15 @@ class GameState:
                 if row + move_amount == back_row:  # If piece gets to back rank, it is a pawn promotion
                     pawn_promotion = True
                 moves.append(
-                    Move((row, column), (row + move_amount, column), self.board, pawn_promotion=pawn_promotion))
+                    Move((row, column), (row + move_amount, column), self.board, self.conn,  pawn_promotion=pawn_promotion))
                 if row == start_row and self.board[row + 2 * move_amount][column] == '--':  # 2 square advance
-                    moves.append(Move((row, column), (row + 2 * move_amount, column), self.board))
+                    moves.append(Move((row, column), (row + 2 * move_amount, column), self.board, self.conn))
         if column - 1 >= 0:  # Captures left
             if not piece_pinned or pin_direction == (move_amount, -1):
                 if self.board[row + move_amount][column - 1][0] == opponent:
                     if row + move_amount == back_row:  # If piece gets to back rank, it is a pawn promotion
                         pawn_promotion = True
-                    moves.append(Move((row, column), (row + move_amount, column - 1),
-                                      self.board, pawn_promotion=pawn_promotion))
+                    moves.append(Move((row, column), (row + move_amount, column - 1),self.board,  self.conn, pawn_promotion=pawn_promotion))
                 if (row + move_amount, column - 1) == self.en_passant_possible:
                     attacking_piece = blocking_piece = False
                     if king_row == row:
@@ -261,14 +264,14 @@ class GameState:
                             elif square != '--':
                                 blocking_piece = True
                     if not attacking_piece or blocking_piece:
-                        moves.append(Move((row, column), (row + move_amount, column - 1), self.board, en_passant=True))
+                        moves.append(Move((row, column), (row + move_amount, column - 1), self.board, self.conn, en_passant=True))
         if column + 1 <= len(self.board) - 1:  # Captures right
             if not piece_pinned or pin_direction == (move_amount, 1):
                 if self.board[row + move_amount][column + 1][0] == opponent:
                     if row + move_amount == back_row:  # If piece gets to back rank, it is a pawn promotion
                         pawn_promotion = True
-                    moves.append(Move((row, column), (row + move_amount, column + 1),
-                                      self.board, pawn_promotion=pawn_promotion))
+                    moves.append(Move((row, column), (row + move_amount, column + 1), 
+                                      self.board, self.conn, pawn_promotion=pawn_promotion))
                 if (row + move_amount, column + 1) == self.en_passant_possible:
                     attacking_piece = blocking_piece = False
                     if king_row == row:
@@ -289,7 +292,7 @@ class GameState:
                             elif square != '--':
                                 blocking_piece = True
                     if not attacking_piece or blocking_piece:
-                        moves.append(Move((row, column), (row + move_amount, column + 1), self.board, en_passant=True))
+                        moves.append(Move((row, column), (row + move_amount, column + 1), self.board, self.conn, en_passant=True))
 
     def get_rook_moves(self, row, column, moves):
         """Gets all rook moves for the rook located at (row, column) and adds moves to move log"""
@@ -314,9 +317,9 @@ class GameState:
                     if not piece_pinned or pin_direction == d or pin_direction == (-d[0], -d[1]):
                         end_piece = self.board[end_row][end_column]
                         if end_piece == '--':  # Valid move to empty space
-                            moves.append(Move((row, column), (end_row, end_column), self.board))
+                            moves.append(Move((row, column), (end_row, end_column), self.board,  self.conn))
                         elif end_piece[0] == opponent:  # Valid move to capture
-                            moves.append(Move((row, column), (end_row, end_column), self.board))
+                            moves.append(Move((row, column), (end_row, end_column), self.board, self.conn))
                             break
                         else:  # Cannot take friendly piece
                             break
@@ -344,9 +347,9 @@ class GameState:
                 if not piece_pinned:
                     end_piece = self.board[end_row][end_column]
                     if end_piece[0] == opponent:  # Valid move to capture
-                        moves.append(Move((row, column), (end_row, end_column), self.board))
+                        moves.append(Move((row, column), (end_row, end_column), self.board, self.conn))
                     elif end_piece == '--':  # Valid move to empty space
-                        moves.append(Move((row, column), (end_row, end_column), self.board))
+                        moves.append(Move((row, column), (end_row, end_column), self.board, self.conn))
 
     def get_bishop_moves(self, row, column, moves):
         """Gets all bishop moves for the bishop located at (row, column) and adds moves to move log"""
@@ -373,9 +376,9 @@ class GameState:
                     if not piece_pinned or pin_direction == d or pin_direction == (-d[0], -d[1]):
                         end_piece = self.board[end_row][end_column]
                         if end_piece == '--':  # Valid move to empty space
-                            moves.append(Move((row, column), (end_row, end_column), self.board))
+                            moves.append(Move((row, column), (end_row, end_column), self.board, self.conn))
                         elif end_piece[0] == opponent:  # Valid move to capture
-                            moves.append(Move((row, column), (end_row, end_column), self.board))
+                            moves.append(Move((row, column), (end_row, end_column), self.board, self.conn))
                             break
                         else:  # Cannot take friendly piece
                             break
@@ -406,7 +409,7 @@ class GameState:
                         self.black_king_location = (end_row, end_column)
                     in_check, pins, checks = self.check_for_pins_and_checks()
                     if not in_check:
-                        moves.append(Move((row, column), (end_row, end_column), self.board))
+                        moves.append(Move((row, column), (end_row, end_column), self.board, self.conn))
 
                     # Places king back on original location
                     if ally == 'w':
@@ -433,13 +436,13 @@ class GameState:
         if self.board[row][column + 1] == '--' and self.board[row][column + 2] == '--' and \
                 not self.square_under_attack(row, column + 1, ally) and not self.square_under_attack(row, column + 2,
                                                                                                      ally):
-            moves.append(Move((row, column), (row, column + 2), self.board, castle=True))
+            moves.append(Move((row, column), (row, column + 2), self.board, self.conn,  castle=True))
 
     def get_queen_side_castle_moves(self, row, column, moves, ally):
         if self.board[row][column - 1] == '--' and self.board[row][column - 2] == '--' and \
                 self.board[row][column - 3] == '--' and not self.square_under_attack(row, column - 1, ally) and \
                 not self.square_under_attack(row, column - 2, ally):
-            moves.append(Move((row, column), (row, column - 2), self.board, castle=True))
+            moves.append(Move((row, column), (row, column - 2), self.board, self.conn, castle=True))
 
     def update_castle_rights(self, move):
         """Updates castle rights given the move"""
@@ -595,7 +598,10 @@ class Move:
                         'e': 4, 'f': 5, 'g': 6, 'h': 7}
     columns_to_files = {v: k for k, v in files_to_columns.items()}
 
-    def __init__(self, start_square, end_square, board, en_passant=False, pawn_promotion=False, castle=False):
+    def __init__(self, start_square, end_square, board, conn, en_passant=False, pawn_promotion=False, castle=False):
+
+        #this sends the message:
+
         self.start_row, self.start_column = start_square[0], start_square[1]
         self.end_row, self.end_column = end_square[0], end_square[1]
         self.piece_moved = board[self.start_row][self.start_column]
